@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; media-src blob:; connect-src 'none'; img-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'">
+<title>TRIX — Qualificação local de microfone</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif}*{box-sizing:border-box}body{margin:0;background:#0d1b19;color:#f4faf8;padding:20px 16px 32px;line-height:1.45}main{max-width:620px;margin:auto}h1{font-size:1.5rem;margin:8px 0}p{color:#c4d5d0}section{background:#18312c;border:1px solid #365b51;border-radius:16px;padding:16px;margin:14px 0}button{background:#b4e0d4;color:#102820;border:0;border-radius:10px;padding:13px 15px;font-weight:700;margin:4px 5px 4px 0;min-height:44px}button:disabled{opacity:.45}button.secondary{background:#d4c1ff}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#081512;border-radius:10px;padding:12px;min-height:110px;font-size:.82rem}strong{color:#fff}audio{width:100%;margin-top:10px}small{color:#b4cbc4}.state{font-weight:700;color:#c6f1d8}.warning{color:#ffd5a2}
+</style>
+</head>
+<body><main>
+<h1>🎙️ TRIX — Teste de microfone</h1>
+<p>Qualificação técnica isolada. Não conecta à OpenAI, AWS ou serviços externos. O áudio de teste permanece somente neste dispositivo.</p>
+<section><strong>1. Diagnóstico do ambiente</strong><p id="environment"></p><button id="check">Atualizar diagnóstico</button><p id="status" class="state" role="status">Aguardando teste.</p></section>
+<section><strong>2. Permissão e captura</strong><p>Toque no botão para solicitar acesso ao microfone. Depois, grave até 3 segundos e reproduza localmente.</p><button id="grant">Solicitar microfone</button><button id="record" class="secondary" disabled>Gravar 3 segundos</button><button id="stop" disabled>Parar captura</button><audio id="player" controls playsinline></audio><p><small>O teste não salva nem envia gravações. Ao sair da página, o áudio temporário é descartado.</small></p></section>
+<section><strong>3. Registro técnico</strong><pre id="log" aria-live="polite"></pre><button id="copy">Copiar diagnóstico</button><button id="clear">Limpar registro</button><p class="warning"><small>Não inclua informações pessoais, dados clínicos ou senhas no registro enviado para análise.</small></p></section>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+let stream=null,recorder=null,chunks=[],recordTimer=null,objectUrl=null;
+const logs=[];
+function log(event,details=''){const line=new Date().toISOString()+' '+event+(details?' '+details:'');logs.push(line);$('log').textContent=logs.join('\n');}
+function status(s){$('status').textContent=s;}
+function diagnostic(){
+ const media=!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia);
+ const rtc=typeof RTCPeerConnection!=='undefined';
+ const rec=typeof MediaRecorder!=='undefined';
+ const secure=window.isSecureContext===true;
+ $('environment').textContent=`HTTPS/contexto seguro: ${secure?'SIM':'NÃO'} · getUserMedia: ${media?'DISPONÍVEL':'INDISPONÍVEL'} · RTCPeerConnection: ${rtc?'DISPONÍVEL':'INDISPONÍVEL'} · MediaRecorder: ${rec?'DISPONÍVEL':'INDISPONÍVEL'} · iframe: ${window.self===window.top?'NÃO':'SIM/INDETERMINADO'}`;
+ log('ENVIRONMENT',`secure=${secure} getUserMedia=${media} rtc=${rtc} recorder=${rec} iframe=${window.self!==window.top}`);
+}
+function stopTracks(){if(recordTimer){clearTimeout(recordTimer);recordTimer=null;}if(recorder&&recorder.state==='recording'){try{recorder.stop();}catch(e){log('RECORDER_STOP_ERROR',e.name||'Error');}}if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;} $('record').disabled=true;$('stop').disabled=true;}
+$('check').onclick=diagnostic;
+$('grant').onclick=async()=>{
+ stopTracks();
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){log('MICROPHONE_ERROR','mediaDevices.getUserMedia indisponível');status('Microfone indisponível neste contexto.');return;}
+ status('Solicitando autorização...');log('MICROPHONE_REQUEST');
+ try{stream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});log('MICROPHONE_GRANTED',`tracks=${stream.getAudioTracks().length}`);status('Microfone autorizado e captura ativa.');$('record').disabled=typeof MediaRecorder==='undefined';$('stop').disabled=false;}
+ catch(e){log('MICROPHONE_ERROR',`${e.name||'Error'}: ${e.message||''}`);status('Falha ao acessar microfone: '+(e.name||'Error'));}
+};
+$('record').onclick=()=>{
+ if(!stream||typeof MediaRecorder==='undefined')return;
+ try{
+ if(objectUrl){URL.revokeObjectURL(objectUrl);objectUrl=null;}
+ $('player').removeAttribute('src');chunks=[];recorder=new MediaRecorder(stream);
+ recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
+ recorder.onerror=e=>log('RECORDER_ERROR',e.error?.name||'Error');
+ recorder.onstop=()=>{if(chunks.length){objectUrl=URL.createObjectURL(new Blob(chunks,{type:recorder.mimeType||'audio/webm'}));$('player').src=objectUrl;log('LOCAL_RECORDING_READY',`chunks=${chunks.length}`);status('Gravação local pronta para reproduzir.');}else{log('RECORDER_EMPTY');status('Nenhum áudio foi gravado.');}stopTracks();};
+ recorder.start();log('RECORDING_START');status('Gravando localmente por até 3 segundos...');$('record').disabled=true;
+ recordTimer=setTimeout(()=>{recordTimer=null;if(recorder?.state==='recording')recorder.stop();},3000);
+ }catch(e){log('RECORDER_ERROR',`${e.name||'Error'}: ${e.message||''}`);status('Falha ao gravar áudio.');}
+};
+$('stop').onclick=()=>{stopTracks();status('Captura interrompida.');log('MICROPHONE_STOPPED');};
+$('copy').onclick=async()=>{const content=logs.join('\n');try{await navigator.clipboard.writeText(content);status('Diagnóstico copiado.');}catch(e){status('Não foi possível copiar; use uma captura de tela.');}};
+$('clear').onclick=()=>{logs.length=0;$('log').textContent='';log('LOG_CLEARED');};
+window.addEventListener('pagehide',()=>{stopTracks();if(objectUrl)URL.revokeObjectURL(objectUrl);});
+diagnostic();log('TRIX_WIX_VOICE_002_READY');
+</script></main></body></html>
