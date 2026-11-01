@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; media-src blob:; connect-src 'none'; img-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'">
+<title>TRIX V003-C4 — ciclo de vida do microfone</title>
+<style>:root{color-scheme:dark;font-family:system-ui,sans-serif}*{box-sizing:border-box}body{margin:0;padding:18px;background:#0d1b19;color:#f4faf8}main{max-width:640px;margin:auto}section{background:#18312c;border:1px solid #365b51;border-radius:14px;padding:14px;margin:14px 0}button{padding:13px;border:0;border-radius:9px;margin:4px;background:#b4e0d4;color:#102820;font-weight:700;min-height:44px}button:disabled{opacity:.4}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.8rem;background:#081512;padding:12px;border-radius:8px}audio{width:100%}p{line-height:1.5}</style></head>
+<body><main><h1>🎙️ TRIX — V003-C4</h1><p>Qualificação local e reversível. Sem AWS, OpenAI, transmissão, armazenamento persistente ou dados clínicos. Use somente voz de teste.</p>
+<section><h2>Estado</h2><p id="state" role="status">Aguardando teste.</p><p id="environment"></p><p id="tracks">Trilhas: nenhuma</p><p id="visibility"></p></section>
+<section><h2>Captura controlada</h2><p>Inicie uma gravação de até 20 segundos, navegue para Início ou minimize o aplicativo e retorne. Ao final, reproduza o áudio localmente. A gravação não é enviada.</p>
+<button id="start">Iniciar gravação (máx. 20 s)</button><button id="stop" disabled>Encerrar e liberar microfone</button><button id="discard">Descartar áudio</button><audio id="player" controls playsinline></audio></section>
+<section><h2>Diagnóstico sem conteúdo de áudio</h2><pre id="log"></pre><button id="copy">Copiar diagnóstico</button><button id="clear">Limpar registro</button></section>
+<script>
+'use strict';
+const el=id=>document.getElementById(id);
+let stream=null,recorder=null,timer=null,url=null,chunks=[],generation=0,started=0;
+const logs=[];
+function log(event,detail=''){const s=new Date().toISOString()+' '+event+(detail?' '+detail:'');logs.push(s);el('log').textContent=logs.join('\n');}
+function state(s){el('state').textContent=s;}
+function trackState(){el('tracks').textContent='Trilhas: '+(stream?stream.getTracks().map(t=>t.kind+':'+t.readyState+', enabled='+t.enabled+', muted='+t.muted).join(' | '):'nenhuma');}
+function visibility(){el('visibility').textContent='document.visibilityState='+document.visibilityState+'; foco='+document.hasFocus();}
+function discard(){if(url){URL.revokeObjectURL(url);url=null;}el('player').removeAttribute('src');el('player').load();chunks=[];}
+function stop(){if(timer){clearTimeout(timer);timer=null;}if(recorder&&recorder.state!=='inactive'){try{recorder.stop();}catch(e){log('RECORDER_STOP_ERROR',e.name);}}if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}el('stop').disabled=true;el('start').disabled=false;trackState();}
+function finalize(){if(chunks.length){url=URL.createObjectURL(new Blob(chunks,{type:recorder.mimeType||'audio/webm'}));el('player').src=url;log('RECORDING_READY','chunks='+chunks.length+' elapsed_ms='+(Date.now()-started));state('Gravação local pronta para reprodução. Microfone encerrado.');}else{log('RECORDING_EMPTY');state('Gravação sem áudio. Microfone encerrado.');}stop();}
+el('start').onclick=async()=>{
+ stop();discard();generation++;const id=generation;
+ if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==='undefined'){state('API de áudio indisponível.');log('API_UNAVAILABLE');return;}
+ state('Solicitando microfone...');log('MICROPHONE_REQUEST');
+ try{
+ const s=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+ if(id!==generation){s.getTracks().forEach(t=>t.stop());return;}
+ stream=s;
+ for(const t of s.getTracks()){t.addEventListener('ended',()=>{log('TRACK_ENDED',t.kind);trackState();});t.addEventListener('mute',()=>{log('TRACK_MUTED',t.kind);trackState();});t.addEventListener('unmute',()=>{log('TRACK_UNMUTED',t.kind);trackState();});}
+ log('MICROPHONE_GRANTED','tracks='+s.getAudioTracks().length);trackState();
+ recorder=new MediaRecorder(s);const r=recorder;chunks=[];
+ r.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data);};
+ r.onerror=e=>log('RECORDER_ERROR',e.error?.name||'Error');
+ r.onstop=()=>{if(r===recorder)finalize();};
+ started=Date.now();r.start(1000);log('RECORDING_START','limit_seconds=20');state('Gravando (máximo 20 segundos). Navegue e retorne.');el('start').disabled=true;el('stop').disabled=false;
+ timer=setTimeout(()=>{log('AUTO_STOP');stop();},20000);
+ }catch(e){log('MICROPHONE_ERROR',e.name||'Error');state('Erro: '+(e.name||'Error'));stop();}
+};
+el('stop').onclick=()=>{log('MANUAL_STOP');stop();state('Captura encerrada.');};
+el('discard').onclick=()=>{discard();log('AUDIO_DISCARDED');};
+el('copy').onclick=async()=>{try{await navigator.clipboard.writeText(logs.join('\n'));state('Diagnóstico copiado.');}catch(e){state('Cópia indisponível; use captura de tela.');}};
+el('clear').onclick=()=>{logs.length=0;el('log').textContent='';log('LOG_CLEARED');};
+document.addEventListener('visibilitychange',()=>{visibility();trackState();log('VISIBILITY_CHANGE',document.visibilityState+' '+el('tracks').textContent);});
+window.addEventListener('pagehide',e=>{log('PAGEHIDE','persisted='+e.persisted);stop();discard();});
+window.addEventListener('pageshow',e=>{visibility();trackState();log('PAGESHOW','persisted='+e.persisted);});
+window.addEventListener('blur',()=>log('WINDOW_BLUR'));
+window.addEventListener('focus',()=>{visibility();log('WINDOW_FOCUS');});
+el('environment').textContent='secure='+window.isSecureContext+' getUserMedia='+!!navigator.mediaDevices?.getUserMedia+' MediaRecorder='+(typeof MediaRecorder!=='undefined')+' rtc='+(typeof RTCPeerConnection!=='undefined')+' iframe='+(window.self!==window.top);
+visibility();trackState();log('TRIX_V003_C4_READY');
+</script></main></body></html>
