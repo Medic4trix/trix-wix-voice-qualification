@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; media-src blob:; img-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>TRIX V004-C3 — diagnóstico de origem</title>
+<style>:root{color-scheme:dark;font-family:system-ui,sans-serif}*{box-sizing:border-box}body{background:#0d1b19;color:#f5faf8;margin:0;padding:16px}main{max-width:660px;margin:auto}section{background:#18312c;border:1px solid #35574e;border-radius:12px;padding:14px;margin:12px 0}button{padding:13px;margin:5px;border:0;border-radius:9px;min-height:44px;background:#b8e5d7;color:#10251e;font-weight:bold}button:disabled{opacity:.45}pre{font-size:.8rem;white-space:pre-wrap;overflow-wrap:anywhere;background:#091713;padding:12px;border-radius:8px}p{line-height:1.5}audio{width:100%}</style></head>
+<body><main><h1>🎙️ TRIX — V004-C3</h1><p>Prova C3: WebRTC local com pausa física em segundo plano, sem retomada automática. Prova de navegador, não de faturamento remoto. Use somente voz de teste. Preferencialmente utilize fones de ouvido para evitar microfonia. Nenhum áudio é enviado a serviços externos.</p>
+<section><h2>Conexão</h2><p id="status" role="status">Aguardando início.</p><p id="environment"></p><p id="peers">A: não iniciada | B: não iniciada</p><button id="start">Iniciar WebRTC (máx. 20 s)</button><button id="stop" disabled>Encerrar e liberar microfone</button><p>Reprodução do áudio recebido pelo Peer B:</p><audio id="remote" autoplay playsinline controls></audio><p id="received">Trilha recebida: não</p></section>
+<section><h2>Diagnóstico de origem e segurança — V004-C3</h2><pre id="origin-diagnostic">Aguardando leitura.</pre><p>Este painel apenas lê propriedades do documento e do navegador. Não solicita permissões.</p></section>
+<section><h2>Diagnóstico técnico</h2><pre id="log"></pre><button id="copy">Copiar diagnóstico</button></section>
+<script>
+'use strict';
+const el=id=>document.getElementById(id),logs=[];
+let pcA=null,pcB=null,stream=null,timer=null,run=0,received=false,sessionOpen=false;
+function log(e,d=''){logs.push(new Date().toISOString()+' '+e+(d?' '+d:''));el('log').textContent=logs.join('\n');}
+function status(s){el('status').textContent=s;}
+function peerStatus(){el('peers').textContent='A: '+(pcA?pcA.connectionState+'/'+pcA.iceConnectionState:'não iniciada')+' | B: '+(pcB?pcB.connectionState+'/'+pcB.iceConnectionState:'não iniciada');}
+function shutdown(reason){
+ const hadResources=sessionOpen||!!stream||!!pcA||!!pcB||!!timer;
+ run++;sessionOpen=false;
+ if(timer){clearTimeout(timer);timer=null;}
+ const tracks=stream?stream.getTracks():[];
+ const before=tracks.map(t=>t.kind+':'+t.readyState).join(',')||'none';
+ for(const t of tracks){try{t.stop();}catch(e){log('TRACK_STOP_ERROR',e.name);}}
+ const after=tracks.map(t=>t.kind+':'+t.readyState).join(',')||'none';
+ stream=null;
+ for(const pc of [pcA,pcB]){if(pc){try{pc.close();}catch(e){log('PEER_CLOSE_ERROR',e.name);}}}
+ pcA=null;pcB=null;
+ el('remote').pause();el('remote').srcObject=null;
+ el('start').disabled=false;el('stop').disabled=true;peerStatus();
+ if(hadResources){log('TRACK_RELEASE','before='+before+' after='+after);log('PEERS_CLOSED','local=true');log('SESSION_CLOSED',reason);}
+ else log('SHUTDOWN_NOOP',reason);
+ status('Sessão encerrada; captura local parada. Retomada exige novo clique.');
+}
+function wire(pc,name){pc.oniceconnectionstatechange=()=>{log('ICE_STATE_'+name,pc.iceConnectionState);peerStatus();};pc.onconnectionstatechange=()=>{log('CONNECTION_STATE_'+name,pc.connectionState);peerStatus();};pc.onicegatheringstatechange=()=>log('GATHERING_STATE_'+name,pc.iceGatheringState);pc.onicecandidate=e=>{if(e.candidate){const target=name==='A'?pcB:pcA;if(target){target.addIceCandidate(e.candidate).catch(err=>log('ICE_CANDIDATE_ERROR_'+name,err.name));}}};}
+async function gather(pc){if(pc.iceGatheringState==='complete')return;await new Promise(resolve=>{const t=setTimeout(()=>{pc.removeEventListener('icegatheringstatechange',fn);resolve();},5000);function fn(){if(pc.iceGatheringState==='complete'){clearTimeout(t);pc.removeEventListener('icegatheringstatechange',fn);resolve();}}pc.addEventListener('icegatheringstatechange',fn);});}
+el('start').onclick=async()=>{
+ if(document.visibilityState!=='visible'){log('START_REJECTED_HIDDEN');return;}
+ shutdown('RESET_BEFORE_START');sessionOpen=true;const id=run;received=false;el('received').textContent='Trilha recebida: não';
+ if(!window.isSecureContext||!navigator.mediaDevices?.getUserMedia||typeof RTCPeerConnection==='undefined'){status('APIs WebRTC indisponíveis.');log('API_UNAVAILABLE');return;}
+ el('start').disabled=true;el('stop').disabled=false;status('Solicitando microfone...');log('MICROPHONE_REQUEST');
+ try{
+ const s=await navigator.mediaDevices.getUserMedia({audio:true,video:false});if(id!==run||document.visibilityState!=='visible'){s.getTracks().forEach(t=>t.stop());log('LATE_MICROPHONE_RELEASED');return;}stream=s;log('MICROPHONE_GRANTED','tracks='+s.getAudioTracks().length);
+ pcA=new RTCPeerConnection({iceServers:[]});pcB=new RTCPeerConnection({iceServers:[]});wire(pcA,'A');wire(pcB,'B');
+ pcB.ontrack=e=>{received=true;el('received').textContent='Trilha recebida: '+e.track.kind+' / '+e.track.readyState;log('REMOTE_TRACK_RECEIVED',e.track.kind);el('remote').srcObject=e.streams[0]||new MediaStream([e.track]);const p=el('remote').play();if(p&&p.catch)p.catch(err=>log('PLAYBACK_BLOCKED',err.name));};
+ s.getTracks().forEach(t=>pcA.addTrack(t,s));
+ const offer=await pcA.createOffer();if(id!==run)return;await pcA.setLocalDescription(offer);if(id!==run)return;await pcB.setRemoteDescription(pcA.localDescription);if(id!==run)return;
+ const answer=await pcB.createAnswer();if(id!==run)return;await pcB.setLocalDescription(answer);if(id!==run)return;await pcA.setRemoteDescription(pcB.localDescription);if(id!==run)return;
+ log('SDP_EXCHANGED','local_only=true ice_servers=0');await Promise.all([gather(pcA),gather(pcB)]);if(id!==run)return;
+ peerStatus();status('Conexão local iniciada. Fale e verifique o áudio recebido.');log('LOCAL_NEGOTIATION_COMPLETE','received='+received);
+ timer=setTimeout(()=>shutdown('AUTO_STOP_20S'),20000);
+ }catch(err){log('WEBRTC_ERROR',err.name+': '+err.message);shutdown('ERROR');}
+};
+el('stop').onclick=()=>shutdown('MANUAL_STOP');
+el('copy').onclick=async()=>{try{await navigator.clipboard.writeText(logs.join('\n'));status('Diagnóstico copiado.');}catch(e){status('Cópia indisponível; faça uma captura de tela.');}};
+document.addEventListener('visibilitychange',()=>{log('VISIBILITY_CHANGE',document.visibilityState);if(document.visibilityState==='hidden')shutdown('BACKGROUND_HIDDEN');else log('FOREGROUND_NO_AUTO_RESUME');});
+window.addEventListener('pagehide',()=>shutdown('PAGEHIDE'));
+el('environment').textContent='secure='+window.isSecureContext+' rtc='+(typeof RTCPeerConnection!=='undefined')+' getUserMedia='+!!navigator.mediaDevices?.getUserMedia+' iframe='+(window.self!==window.top);
+log('TRIX_V004_C3_READY');
+</script></main><script>
+'use strict';
+(function(){
+ const values=[
+ ['href',location.href],
+ ['protocol',location.protocol],
+ ['origin',location.origin],
+ ['hostname',location.hostname],
+ ['secure',String(window.isSecureContext)],
+ ['mediaDevices',String(!!navigator.mediaDevices)],
+ ['getUserMedia',String(!!navigator.mediaDevices?.getUserMedia)],
+ ['rtc',String(typeof RTCPeerConnection!=='undefined')],
+ ['iframe',String(window.self!==window.top)],
+ ['documentURL',document.URL],
+ ['baseURI',document.baseURI],
+ ['visibility',document.visibilityState]
+ ];
+ document.getElementById('origin-diagnostic').textContent=values.map(([k,v])=>k+'='+v).join('\n');
+})();
+</script>
+</body></html>
