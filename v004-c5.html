@@ -48,7 +48,7 @@ let voice=initialVoice(), peerA=null,peerB=null,stream=null,sequence=0,token=0,r
 function log(type,detail=''){logs.push(new Date().toISOString()+' '+type+' '+detail);$('log').textContent=logs.join('\n');}
 function show(){ $('state').textContent='STATE='+voice.state+' generation='+voice.generation+' continuity='+voice.continuityId+' releaseReady='+releaseReady; }
 function dispatch(type,at=Date.now()/1000,extra={}){
- const before=voice;const event={id:'c5-'+(++sequence),type,at,generation:voice.generation,...extra};
+ const before=voice;const monotonicAt=Math.max(at,voice.at===null?0:voice.at);const event={id:'c5-'+(++sequence),type,at:monotonicAt,generation:voice.generation,...extra};
  voice=reduceVoice(voice,event);show();
  log('LIFECYCLE',type+' '+before.state+' -> '+voice.state+' effect='+voice.effect);
  return voice!==before?voice.effect:null;
@@ -93,8 +93,8 @@ $('start').onclick=()=>{
 };
 $('stop').onclick=()=>{dispatch('STOP');release('MANUAL_STOP');};
 $('activity').onclick=()=>dispatch('USER_ACTIVITY');
-$('warn').onclick=()=>{if(voice.lastUserActivity!==null)dispatch('TICK',Math.max(Date.now()/1000,voice.lastUserActivity+120));};
-$('end').onclick=()=>{if(voice.lastUserActivity!==null){const effect=dispatch('TICK',Math.max(Date.now()/1000,voice.lastUserActivity+180));if(effect==='REQUEST_RELEASE')release('SYNTHETIC_180_SECONDS');}};
+$('warn').onclick=()=>{if(voice.lastUserActivity!==null){log('SYNTHETIC_CLOCK','advance_to_120_seconds');dispatch('TICK',Math.max(voice.at??0,voice.lastUserActivity+120));}};
+$('end').onclick=()=>{if(voice.lastUserActivity!==null){log('SYNTHETIC_CLOCK','advance_to_180_seconds');const effect=dispatch('TICK',Math.max(voice.at??0,voice.lastUserActivity+180));if(effect==='REQUEST_RELEASE')release('SYNTHETIC_180_SECONDS');}};
 document.addEventListener('visibilitychange',()=>{log('VISIBILITY_CHANGE',document.visibilityState);if(document.visibilityState==='hidden'){dispatch('HIDDEN');release('BACKGROUND_HIDDEN');}else{dispatch('VISIBLE');log('FOREGROUND_NO_AUTO_RESUME');}});
 window.addEventListener('pagehide',()=>{dispatch('PAGEHIDE');release('PAGEHIDE');});
 $('copy').onclick=()=>navigator.clipboard.writeText(logs.join('\n')).catch(()=>log('COPY_UNAVAILABLE'));
