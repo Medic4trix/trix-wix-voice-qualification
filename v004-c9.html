@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; media-src blob:; img-src 'none'; object-src 'none'">
+<title>TRIX C3 — silêncio real local / SANDBOX</title>
+<style>body{background:#10231f;color:#f4faf7;font:16px system-ui;margin:20px auto;max-width:700px;padding:12px}button{padding:12px;margin:6px;border-radius:8px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#071712;padding:12px}section{border:1px solid #527468;border-radius:12px;padding:12px;margin:12px 0}audio{width:100%}</style>
+</head><body><h1>TRIX C3 C9 — comparação simultânea de detectores</h1><p>SANDBOX: detecção por energia sonora local, não reconhecimento de fala. Aviso após 120 s e encerramento aos 180 s de baixa energia. Sem IA, gravação, transmissão ou cobrança. Ambos os detectores recebem as mesmas amostras RMS; apenas o original controla o temporizador 120/180s.</p>
+<section><label><input id="admit" type="checkbox"> Confirmo que esta é uma prova sintética e autorizo o uso local do microfone</label><p id="state">IDLE</p><p id="status">Aguardando início explícito.</p><p id="comparison">Comparação: aguardando início.</p><p id="meter" aria-live="off">RMS: aguardando | limiar: 0.025 | atividade: não avaliada</p><label>Limiar de energia (qualificação): <select id="threshold"><option value="0.025">0.025 (C7)</option><option value="0.01">0.010</option><option value="0.005" selected>0.005</option><option value="0.002">0.002</option></select></label><button id="start">Iniciar / retomar por clique</button><button id="stop">Encerrar</button><audio id="audio" autoplay playsinline controls></audio><p>Para evitar microfonia, prefira fones de ouvido.</p></section>
+<section><h2>Diagnóstico local</h2><pre id="log"></pre><button id="copy">Copiar diagnóstico</button></section>
+<script>
+'use strict';
+/** C3 local acoustic activity detector: scalar energy only; no audio buffers or network I/O. */
+function initialDetector({threshold=0.025, consecutiveFrames=3, warningSeconds=120, endSeconds=180}={}) {
+ if(!(threshold>0&&threshold<1)||!Number.isInteger(consecutiveFrames)||consecutiveFrames<1||!(warningSeconds>0&&endSeconds>warningSeconds)) throw new Error('INVALID_CONFIGURATION');
+ return {threshold,consecutiveFrames,warningSeconds,endSeconds,frames:0,lastActivityAt:null,at:null,state:'IDLE',generation:0};
+}
+function detect(state,event) {
+ if(!event||!Number.isFinite(event.at)||event.at<0||(state.at!==null&&event.at<state.at)) return state;
+ if(event.type==='START') {
+  if(!event.explicit||!event.admitted||!event.releaseReady||!['IDLE','PAUSED','ENDED'].includes(state.state)) return state;
+  return {...state,state:'ACTIVE',at:event.at,lastActivityAt:event.at,frames:0,generation:state.generation+1};
+ }
+ if(event.generation!==state.generation) return state;
+ if(event.type==='BACKGROUND'||event.type==='STOP'||event.type==='FAILURE') {
+  if(!['ACTIVE','WARNING'].includes(state.state))return state;
+  return {...state,state:event.type==='BACKGROUND'?'PAUSED':'ENDED',at:event.at,frames:0};
+ }
+ if(!['ACTIVE','WARNING'].includes(state.state))return state;
+ if(event.type==='ENERGY') {
+  if(!Number.isFinite(event.rms)||event.rms<0||event.rms>1)return state;
+  const frames=event.rms>=state.threshold?state.frames+1:0;
+  if(frames>=state.consecutiveFrames)return {...state,frames:0,lastActivityAt:event.at,at:event.at,state:'ACTIVE'};
+  return {...state,frames,at:event.at};
+ }
+ if(event.type==='TICK') {
+  const elapsed=event.at-state.lastActivityAt;
+  if(elapsed>=state.endSeconds)return {...state,state:'ENDED',at:event.at,frames:0};
+  if(elapsed>=state.warningSeconds)return {...state,state:'WARNING',at:event.at};
+  return {...state,at:event.at};
+ }
+ return state;
+}
+
+function initialWindow({threshold=0.005,seconds=1.5,hitsNeeded=2}={}) {if(!(threshold>0&&threshold<1&&seconds>0&&Number.isInteger(hitsNeeded)&&hitsNeeded>=2))throw Error('INVALID_CONFIG');return {threshold,seconds,hitsNeeded,hits:[],lastAt:null};}
+function sampleWindow(s,at,rms){if(!Number.isFinite(at)||at<0||!Number.isFinite(rms)||rms<0||rms>1||(s.lastAt!==null&&at<s.lastAt))return {state:s,activity:false};const hits=s.hits.filter(t=>at-t<=s.seconds);if(rms>=s.threshold)hits.push(at);const activity=hits.length>=s.hitsNeeded&&hits[hits.length-1]>hits[0];return {state:{...s,lastAt:at,hits:activity?[]:hits},activity};}
+const $=id=>document.getElementById(id), logs=[];
+let state=initialDetector(), stream=null,peerA=null,peerB=null,ctx=null,analyser=null,source=null,buf=null,timer=null,token=0,releaseReady=true,sessionEpoch=0;
+const clock=()=>performance.now()/1000;
+function log(k,v=''){logs.push(new Date().toISOString()+' '+k+' '+v);$('log').textContent=logs.join('\n');}
+function render(){ $('state').textContent='STATE='+state.state+' generation='+state.generation+' releaseReady='+releaseReady; }
+function apply(type,extra={}){
+ const old=state;state=detect(state,{type,at:clock(),generation:state.generation,...extra});
+ if(old.state!==state.state)log('C3_LIFECYCLE',type+' '+old.state+' -> '+state.state+' elapsed='+Math.floor(state.at-state.lastActivityAt)+'s');
+ render();return old.state!==state.state;
+}
+async function release(reason){
+ token++;if(timer){clearInterval(timer);timer=null;}
+ releaseReady=false;
+ const tracks=stream?.getTracks()||[],before=tracks.map(t=>t.kind+':'+t.readyState).join(',')||'none';
+ tracks.forEach(t=>{try{t.stop();}catch(e){log('TRACK_STOP_ERROR',e.name);}});
+ const after=tracks.map(t=>t.kind+':'+t.readyState).join(',')||'none';
+ for(const p of [peerA,peerB]){try{p?.close();}catch(e){log('PEER_CLOSE_ERROR',e.name);}}
+ peerA=null;peerB=null;stream=null;
+ $('audio').pause();$('audio').srcObject=null;
+ try{source?.disconnect();analyser?.disconnect();if(ctx&&ctx.state!=='closed')await ctx.close();}catch(e){log('AUDIO_CONTEXT_CLOSE_ERROR',e.name);}
+ source=null;analyser=null;ctx=null;buf=null;
+ releaseReady=tracks.every(t=>t.readyState==='ended');
+ log('TRACK_RELEASE','before='+before+' after='+after);
+ log('PEERS_CLOSED','local=true');
+ log('LOCAL_RELEASE_OBSERVED','ready='+releaseReady+' remote_economic_confirmation=NOT_AVAILABLE reason='+reason);
+ $('status').textContent='Microfone local interrompido. Novo clique necessário.';render();
+}
+async function connect(id){
+ if(!isSecureContext||!navigator.mediaDevices?.getUserMedia||!window.AudioContext||!window.RTCPeerConnection)throw Error('REQUIRED_BROWSER_API_UNAVAILABLE');
+ log('MICROPHONE_REQUEST');
+ const acquired=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
+ if(id!==token||document.visibilityState!=='visible'){acquired.getTracks().forEach(t=>t.stop());log('LATE_MICROPHONE_RELEASED');return;}
+ stream=acquired;log('MICROPHONE_GRANTED','tracks='+stream.getAudioTracks().length);
+ ctx=new AudioContext();source=ctx.createMediaStreamSource(stream);analyser=ctx.createAnalyser();analyser.fftSize=2048;source.connect(analyser);buf=new Float32Array(analyser.fftSize);
+ await ctx.resume();if(id!==token)return;
+ peerA=new RTCPeerConnection({iceServers:[]});peerB=new RTCPeerConnection({iceServers:[]});
+ const a=peerA,b=peerB;
+ a.onicecandidate=e=>{if(e.candidate&&id===token)b.addIceCandidate(e.candidate).catch(()=>{});};
+ b.onicecandidate=e=>{if(e.candidate&&id===token)a.addIceCandidate(e.candidate).catch(()=>{});};
+ b.ontrack=e=>{if(id!==token)return;$('audio').srcObject=e.streams[0]||new MediaStream([e.track]);$('audio').play().catch(err=>log('PLAYBACK_BLOCKED',err.name));log('REMOTE_TRACK_RECEIVED',e.track.kind);};
+ stream.getTracks().forEach(t=>a.addTrack(t,stream));
+ const offer=await a.createOffer();if(id!==token)return;await a.setLocalDescription(offer);if(id!==token)return;await b.setRemoteDescription(a.localDescription);if(id!==token)return;
+ const answer=await b.createAnswer();if(id!==token)return;await b.setLocalDescription(answer);if(id!==token)return;await a.setRemoteDescription(b.localDescription);if(id!==token)return;
+ log('LOCAL_NEGOTIATION_COMPLETE','ice_servers=0');
+ $('status').textContent='Monitorando energia acústica real localmente; silêncio por 120/180 segundos. Observe o indicador RMS.';
+ let ticks=0, sampleCount=0, peak=0, activityCount=0, windowCount=0, windowGate=initialWindow({threshold:state.threshold});
+ timer=setInterval(()=>{
+  if(id!==token||!analyser||document.visibilityState!=='visible')return;
+  if(ctx?.state!=='running'){log('AUDIO_CONTEXT_NOT_RUNNING','state='+ctx?.state);apply('FAILURE');release('AUDIO_CONTEXT_SUSPENDED');return;}
+  analyser.getFloatTimeDomainData(buf);
+  let sum=0;for(let i=0;i<buf.length;i++)sum+=buf[i]*buf[i];
+  const rms=Math.sqrt(sum/buf.length);
+  const windowResult=sampleWindow(windowGate,clock(),rms);windowGate=windowResult.state;if(windowResult.activity){windowCount++;if(windowCount===1||windowCount%12===0)log('WINDOW_ACTIVITY','count='+windowCount+' rms='+rms.toFixed(5));}
+  const oldActivity=state.lastActivityAt;
+  apply('ENERGY',{rms});
+  peak=Math.max(peak,rms);sampleCount++;
+  if(state.lastActivityAt!==oldActivity){activityCount++;if(activityCount===1||activityCount%12===0)log('ACOUSTIC_ACTIVITY','count='+activityCount+' rms='+rms.toFixed(5)+' threshold='+state.threshold);}
+  if(sampleCount%8===0){$('comparison').textContent='Original (3 consecutivas): '+activityCount+' | Janela (2 em 1,5s): '+windowCount;$('meter').textContent='RMS atual='+rms.toFixed(5)+' pico 2s='+peak.toFixed(5)+' limiar='+state.threshold+' reconhecimentos='+activityCount;log('ACOUSTIC_SAMPLE','rms='+rms.toFixed(5)+' peak='+peak.toFixed(5)+' threshold='+state.threshold+' recognized='+activityCount);peak=0;}
+  const previous=state.state;
+  apply('TICK');
+  if(previous!=='WARNING'&&state.state==='WARNING'){$('status').textContent='AVISO: 120 segundos de silêncio detectados. Fale para manter a sessão.';log('SILENCE_WARNING','threshold=120s');}
+  if(state.state==='ENDED'){log('SILENCE_AUTO_END','threshold=180s');release('REAL_SILENCE_180_SECONDS');}
+ },250);
+}
+$('start').onclick=()=>{
+ if(document.visibilityState!=='visible'||!releaseReady||!$('admit').checked){log('START_REJECTED','visible='+document.visibilityState+' releaseReady='+releaseReady+' admitted='+$('admit').checked);return;}
+ if(!['ACTIVE','WARNING'].includes(state.state)){state={...state,threshold:Number($('threshold').value)};log('ACOUSTIC_CONFIG','threshold='+state.threshold+' consecutiveFrames='+state.consecutiveFrames+' windowSeconds=1.5 windowHits=2');}
+ const previous=state.state;apply('START',{explicit:true,admitted:true,releaseReady:true});
+ if(state.state!=='ACTIVE'||previous==='ACTIVE'||previous==='WARNING'){log('START_REJECTED_STATE');return;}
+ releaseReady=false;const id=++token;sessionEpoch=clock();
+ connect(id).catch(e=>{if(id!==token)return;log('WEBRTC_ERROR',e.name+':'+e.message);apply('FAILURE');release('FAILURE');});
+};
+$('stop').onclick=()=>{apply('STOP');release('MANUAL_STOP');};
+document.addEventListener('visibilitychange',()=>{log('VISIBILITY_CHANGE',document.visibilityState);if(document.visibilityState==='hidden'){apply('BACKGROUND');release('BACKGROUND_HIDDEN');}else{log('FOREGROUND_NO_AUTO_RESUME');}});
+window.addEventListener('pagehide',()=>{apply('STOP');release('PAGEHIDE');});
+$('copy').onclick=()=>navigator.clipboard.writeText(logs.join('\n')).catch(()=>log('COPY_UNAVAILABLE'));
+render();log('TRIX_C3_C9_READY','acoustic=RMS_LOCAL clock=PERFORMANCE_MONOTONIC threshold=0.025 warning=120 end=180');
+</script></body></html>
