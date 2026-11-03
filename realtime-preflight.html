@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; media-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Dr. TRIX — Pré-voo WebRTC isolado</title>
+<style>body{background:#10211d;color:#eff9f5;font:16px system-ui;margin:0;padding:20px}main{max-width:620px;margin:auto}button{padding:14px;margin:8px 0;background:#a6e4d1;border:0;border-radius:10px;font-weight:700}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#1d3830;padding:15px;border-radius:10px}small{color:#c6d6d0}</style></head><body><main>
+<h1>Dr. TRIX — Pré-voo WebRTC</h1>
+<p>Teste local de preparação da conexão de áudio. <strong>Não conecta à OpenAI, não cria sessão remota e não envia áudio.</strong></p>
+<button id="test">Preparar áudio e oferta WebRTC local</button>
+<button id="copy">Copiar resultado</button>
+<pre id="result" role="status">Aguardando teste.</pre>
+<small>Qualificação sintética, sem PHI. O microfone e a conexão local são encerrados ao concluir.</small>
+<script>
+'use strict';
+const out=document.getElementById('result');let report=[];
+function line(s){report.push(s);out.textContent=report.join('\n');}
+document.getElementById('test').onclick=async()=>{
+  report=[];let stream=null,pc=null;
+  try{
+    line('HTTPS='+window.isSecureContext);
+    line('IFRAME='+(window.self!==window.top));
+    line('WEBRTC_AVAILABLE='+(typeof RTCPeerConnection==='function'));
+    line('MEDIA_AVAILABLE='+!!navigator.mediaDevices?.getUserMedia);
+    if(!window.isSecureContext||!navigator.mediaDevices?.getUserMedia||typeof RTCPeerConnection!=='function')throw Error('Ambiente incompatível');
+    stream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+    line('MIC_TRACKS='+stream.getAudioTracks().length);
+    pc=new RTCPeerConnection({iceServers:[]});
+    for(const track of stream.getAudioTracks())pc.addTrack(track,stream);
+    pc.addTransceiver('audio',{direction:'recvonly'});
+    pc.createDataChannel('oai-events');
+    const offer=await pc.createOffer();
+    if(!offer.sdp||!offer.sdp.includes('m=audio'))throw Error('Oferta SDP sem áudio');
+    line('LOCAL_AUDIO_OFFER=PASS');
+    line('REMOTE_CONNECTION=NOT_ATTEMPTED');
+    line('CANONICAL_AUTHORITY=BLOCKED');
+    line('OPENAI_REQUESTS=0');
+    line('RESULT=LOCAL_PREFLIGHT_PASS');
+  }catch(e){line('RESULT=FAIL '+(e.name||'Error')+': '+e.message);}
+  finally{if(pc)pc.close();if(stream)stream.getTracks().forEach(t=>t.stop());line('LOCAL_RESOURCES=CLOSED');}
+};
+document.getElementById('copy').onclick=async()=>{try{await navigator.clipboard.writeText(report.join('\n'));}catch(e){line('COPY=UNAVAILABLE');}};
+</script></main></body></html>
