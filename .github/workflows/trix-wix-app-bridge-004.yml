@@ -1,0 +1,23 @@
+name: TRIX Wix Bridge 004 synthetic qualification
+on:
+  push:
+    branches:
+      - qualification/trix-wix-app-bridge-004
+    paths:
+      - 'qualification/trix-wix-app-bridge-004.mjs'
+      - 'tests/trix-wix-app-bridge-004.test.mjs'
+      - '.github/workflows/trix-wix-app-bridge-004.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: trix-wix-bridge-004
+  cancel-in-progress: true
+jobs:
+  synthetic-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Node synthetic tests only — no dependencies or services
+        run: node --test tests/trix-wix-app-bridge-004.test.mjs
