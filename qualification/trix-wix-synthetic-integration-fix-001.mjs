@@ -16,6 +16,7 @@ export function createSyntheticIntegratedWix({ports, conversationView, consentVi
     if (result?.authority !== 'HUMAN_COGNITO_VERIFIED' ||
         typeof result.subject_ref !== 'string' || !result.subject_ref.trim() ||
         typeof result.bearer !== 'string' || !result.bearer.trim()) throw new Error('AUTH_REJECTED');
+    if (identity && identity.subject_ref === result.subject_ref && identity.bearer === result.bearer && identity.authority === result.authority) return identity;
     identity = result;
     return result;
   };
