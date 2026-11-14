@@ -34,11 +34,20 @@ Test file blob: `0cf9ae2825df40ceaa6d3d88d8154b722121dbc6`
 - Remaining: background/foreground behavior, actual browser resource teardown inspection, and exception path for `AudioContext.close()` are not yet physically qualified.
 - Evidence is a user-provided log transcript, not an independently collected browser trace. No production, external provider, or PHI involved.
 
+## Physical Chrome background/foreground evidence (user-provided local diagnostic, 2026-11-14)
+- Local WebRTC negotiation and microphone track acquisition observed before visibility change.
+- `VISIBILITY_CHANGE hidden` at 20:45:33.772Z; `C3_LIFECYCLE BACKGROUND ACTIVE -> PAUSED`; `TRACK_RELEASE before=audio:live after=audio:ended` and `LOCAL_RELEASE_OBSERVED ready=true ... reason=BACKGROUND_HIDDEN`.
+- `VISIBILITY_CHANGE visible` at 20:45:39.353Z immediately followed by `FOREGROUND_NO_AUTO_RESUME`; no automatic microphone request observed.
+- Explicit restart at 20:45:43.555Z: `C3_LIFECYCLE START PAUSED -> ACTIVE`, `MICROPHONE_REQUEST`.
+- Manual stop at 20:45:46.113Z before any `MICROPHONE_GRANTED` in this second attempt; `TRACK_RELEASE before=none after=none`.
+- PASS for background pause, track termination, and foreground no-auto-resume. Pending: confirm late microphone permission resolution after stop, browser-level AudioContext closure under exception, and remaining asynchronous edge cases.
+- This is user-provided diagnostic evidence, not an independently collected browser trace.
+
 ## Remaining release gates
 1. Native Node.js suite: **PASS (17/17)**. Retain the user-provided transcript or attach a local log if required by governance.
-2. Chrome local loopback and manual-stop track release observed; still verify visibility transitions, browser-level teardown, and exceptional AudioContext close behavior.
+2. Chrome local loopback, manual-stop track release, background pause and no-auto-resume observed; still verify late asynchronous microphone acquisition, browser-level teardown, and exceptional AudioContext close behavior.
 3. Review test scope and any remaining asynchronous edge cases before marking Etapa 2 complete.
 4. No merge, deployment, AWS, real providers, PHI, paid GitHub Actions, or start of Etapa 5 is authorized by this evidence.
 
 ## Status
-**R1 implemented; adapted checks PASS; native Node.js 17/17 PASS; Chrome local loopback/manual-stop track release observed; Etapa 2 OPEN / remaining physical edge cases and final scope review pending.**
+**R1 implemented; adapted checks PASS; native Node.js 17/17 PASS; Chrome local loopback/manual-stop/background no-auto-resume observed; Etapa 2 OPEN / remaining physical edge cases and final scope review pending.**
