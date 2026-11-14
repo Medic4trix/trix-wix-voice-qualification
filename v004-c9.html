@@ -43,7 +43,8 @@ function detect(state,event) {
 function initialWindow({threshold=0.005,seconds=1.5,hitsNeeded=2}={}) {if(!(threshold>0&&threshold<1&&seconds>0&&Number.isInteger(hitsNeeded)&&hitsNeeded>=2))throw Error('INVALID_CONFIG');return {threshold,seconds,hitsNeeded,hits:[],lastAt:null};}
 function sampleWindow(s,at,rms){if(!Number.isFinite(at)||at<0||!Number.isFinite(rms)||rms<0||rms>1||(s.lastAt!==null&&at<s.lastAt))return {state:s,activity:false};const hits=s.hits.filter(t=>at-t<=s.seconds);if(rms>=s.threshold)hits.push(at);const activity=hits.length>=s.hitsNeeded&&hits[hits.length-1]>hits[0];return {state:{...s,lastAt:at,hits:activity?[]:hits},activity};}
 const $=id=>document.getElementById(id), logs=[];
-let state=initialDetector(), stream=null,peerA=null,peerB=null,ctx=null,analyser=null,source=null,buf=null,timer=null,token=0,releaseReady=true,sessionEpoch=0;
+let state=initialDetector(), stream=null,peerA=null,peerB=null,ctx=null,analyser=null,source=null,buf=null,timer=null,token=0,releaseReady=true,releasePromise=null,sessionEpoch=0;
+const NEGOTIATION_TIMEOUT_MS=15000;
 const clock=()=>performance.now()/1000;
 function log(k,v=''){logs.push(new Date().toISOString()+' '+k+' '+v);$('log').textContent=logs.join('\n');}
 function render(){ $('state').textContent='STATE='+state.state+' generation='+state.generation+' releaseReady='+releaseReady; }
@@ -52,22 +53,32 @@ function apply(type,extra={}){
  if(old.state!==state.state)log('C3_LIFECYCLE',type+' '+old.state+' -> '+state.state+' elapsed='+Math.floor(state.at-state.lastActivityAt)+'s');
  render();return old.state!==state.state;
 }
-async function release(reason){
- token++;if(timer){clearInterval(timer);timer=null;}
- releaseReady=false;
- const tracks=stream?.getTracks()||[],before=tracks.map(t=>t.kind+':'+t.readyState).join(',')||'none';
- tracks.forEach(t=>{try{t.stop();}catch(e){log('TRACK_STOP_ERROR',e.name);}});
- const after=tracks.map(t=>t.kind+':'+t.readyState).join(',')||'none';
- for(const p of [peerA,peerB]){try{p?.close();}catch(e){log('PEER_CLOSE_ERROR',e.name);}}
- peerA=null;peerB=null;stream=null;
- $('audio').pause();$('audio').srcObject=null;
- try{source?.disconnect();analyser?.disconnect();if(ctx&&ctx.state!=='closed')await ctx.close();}catch(e){log('AUDIO_CONTEXT_CLOSE_ERROR',e.name);}
- source=null;analyser=null;ctx=null;buf=null;
- releaseReady=tracks.every(t=>t.readyState==='ended');
- log('TRACK_RELEASE','before='+before+' after='+after);
- log('PEERS_CLOSED','local=true');
- log('LOCAL_RELEASE_OBSERVED','ready='+releaseReady+' remote_economic_confirmation=NOT_AVAILABLE reason='+reason);
- $('status').textContent='Microfone local interrompido. Novo clique necessário.';render();
+function release(reason){
+ if(releasePromise){log('RELEASE_ALREADY_RUNNING',reason);return releasePromise;}
+ token++;if(timer){clearInterval(timer);timer=null;}releaseReady=false;
+ releasePromise=(async()=>{
+  const tracks=stream?.getTracks()||[],before=tracks.map(t=>t.kind+':'+t.readyState).join(',')||'none';
+  tracks.forEach(t=>{try{t.stop();}catch(e){log('TRACK_STOP_ERROR',e.name);}});
+  const after=tracks.map(t=>t.kind+':'+t.readyState).join(',')||'none';
+  for(const p of [peerA,peerB]){try{p?.close();}catch(e){log('PEER_CLOSE_ERROR',e.name);}}
+  peerA=null;peerB=null;stream=null;
+  $('audio').pause();$('audio').srcObject=null;
+  try{source?.disconnect();analyser?.disconnect();}catch(e){log('AUDIO_DISCONNECT_ERROR',e.name);}
+  const closingContext=ctx;source=null;analyser=null;ctx=null;buf=null;
+  try{if(closingContext&&closingContext.state!=='closed')await closingContext.close();}catch(e){log('AUDIO_CONTEXT_CLOSE_ERROR',e.name);}
+  releaseReady=tracks.every(t=>t.readyState==='ended');
+  log('TRACK_RELEASE','before='+before+' after='+after);log('PEERS_CLOSED','local=true');
+  log('LOCAL_RELEASE_OBSERVED','ready='+releaseReady+' remote_economic_confirmation=NOT_AVAILABLE reason='+reason);
+  $('status').textContent='Microfone local interrompido. Novo clique necessário.';render();
+ })();
+ return releasePromise.finally(()=>{releasePromise=null;});
+}
+function microphoneErrorMessage(e){
+ if(['NotAllowedError','PermissionDeniedError','SecurityError'].includes(e?.name))return 'Permissão do microfone negada ou bloqueada. Verifique as permissões do navegador ou aplicativo e tente novamente.';
+ if(['NotFoundError','DevicesNotFoundError'].includes(e?.name))return 'Nenhum microfone disponível. Conecte ou habilite um microfone e tente novamente.';
+ if(e?.message==='REQUIRED_BROWSER_API_UNAVAILABLE')return 'Este navegador ou WebView não oferece as APIs seguras necessárias para esta prova local.';
+ if(e?.message==='WEBRTC_NEGOTIATION_TIMEOUT')return 'A conexão local demorou além do limite. Recursos interrompidos; tente novamente.';
+ return 'Não foi possível iniciar o áudio local. Verifique o dispositivo e tente novamente.';
 }
 async function connect(id){
  if(!isSecureContext||!navigator.mediaDevices?.getUserMedia||!window.AudioContext||!window.RTCPeerConnection)throw Error('REQUIRED_BROWSER_API_UNAVAILABLE');
@@ -112,7 +123,19 @@ $('start').onclick=()=>{
  const previous=state.state;apply('START',{explicit:true,admitted:true,releaseReady:true});
  if(state.state!=='ACTIVE'||previous==='ACTIVE'||previous==='WARNING'){log('START_REJECTED_STATE');return;}
  releaseReady=false;const id=++token;sessionEpoch=clock();
- connect(id).catch(e=>{if(id!==token)return;log('WEBRTC_ERROR',e.name+':'+e.message);apply('FAILURE');release('FAILURE');});
+ let negotiationFinished=false;
+ const watchdog=setTimeout(()=>{
+  if(id!==token||negotiationFinished)return;
+  log('WEBRTC_NEGOTIATION_TIMEOUT','limit_ms='+NEGOTIATION_TIMEOUT_MS);
+  apply('FAILURE');
+  release('WEBRTC_NEGOTIATION_TIMEOUT').then(()=>{$('status').textContent=microphoneErrorMessage(new Error('WEBRTC_NEGOTIATION_TIMEOUT'));});
+ },NEGOTIATION_TIMEOUT_MS);
+ connect(id).then(()=>{negotiationFinished=true;clearTimeout(watchdog);}).catch(e=>{
+  negotiationFinished=true;clearTimeout(watchdog);
+  if(id!==token)return;
+  log('WEBRTC_ERROR',e.name+':'+e.message);apply('FAILURE');
+  release('FAILURE').then(()=>{$('status').textContent=microphoneErrorMessage(e);});
+ });
 };
 $('stop').onclick=()=>{apply('STOP');release('MANUAL_STOP');};
 document.addEventListener('visibilitychange',()=>{log('VISIBILITY_CHANGE',document.visibilityState);if(document.visibilityState==='hidden'){apply('BACKGROUND');release('BACKGROUND_HIDDEN');}else{log('FOREGROUND_NO_AUTO_RESUME');}});
