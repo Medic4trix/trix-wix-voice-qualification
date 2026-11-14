@@ -40,8 +40,15 @@ Test file blob: `0cf9ae2825df40ceaa6d3d88d8154b722121dbc6`
 - `VISIBILITY_CHANGE visible` at 20:45:39.353Z immediately followed by `FOREGROUND_NO_AUTO_RESUME`; no automatic microphone request observed.
 - Explicit restart at 20:45:43.555Z: `C3_LIFECYCLE START PAUSED -> ACTIVE`, `MICROPHONE_REQUEST`.
 - Manual stop at 20:45:46.113Z before any `MICROPHONE_GRANTED` in this second attempt; `TRACK_RELEASE before=none after=none`.
-- PASS for background pause, track termination, and foreground no-auto-resume. Pending: confirm late microphone permission resolution after stop, browser-level AudioContext closure under exception, and remaining asynchronous edge cases.
+- PASS for background pause, track termination, and foreground no-auto-resume. Pending: review late microphone permission resolution after stop (source guard confirmed, physical branch not observed), browser-level AudioContext closure under exception, and remaining asynchronous edge cases.
 - This is user-provided diagnostic evidence, not an independently collected browser trace.
+
+## Clarification and asynchronous code review (2026-11-14)
+- User clarified the second `MICROPHONE_REQUEST` following foreground return was caused by an accidental explicit Start click, followed by manual Stop; it was **not** an automatic restart.
+- User distinguishes browser tab navigation (voice pauses) from previously observed navigation between internal pages of the Medicatrix app (voice continues). These are different lifecycle surfaces; this Chrome HTML qualification must not be treated as a requirement to stop voice on every internal app navigation.
+- Source review: `connect(id)` checks the session `token` after awaited `getUserMedia()`. If the token is stale or document is hidden, it stops the newly acquired tracks and logs `LATE_MICROPHONE_RELEASED`. The Stop handler calls `release()`, which increments `token`; thus the intended late-permission safety mechanism is present.
+- The user-provided log did not show a late `MICROPHONE_GRANTED` or `LATE_MICROPHONE_RELEASED` for the accidental restart, so that branch is **code-reviewed, not physically observed**.
+- Outstanding distinct issue: `releaseResources()` catches `AudioContext.close()` exceptions but sets `releaseReady` based on track state only; an exceptional close cannot be declared fully qualified without additional assessment. No functional changes authorized or made.
 
 ## Remaining release gates
 1. Native Node.js suite: **PASS (17/17)**. Retain the user-provided transcript or attach a local log if required by governance.
