@@ -1,0 +1,24 @@
+name: TRIX Wix Bridge 005 synthetic UI qualification
+on:
+  push:
+    branches:
+      - qualification/trix-wix-app-bridge-005
+    paths:
+      - 'qualification/trix-wix-app-bridge-005.mjs'
+      - 'qualification/trix-wix-app-bridge-004.mjs'
+      - 'tests/trix-wix-app-bridge-005.test.mjs'
+      - '.github/workflows/trix-wix-app-bridge-005.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: trix-wix-bridge-005
+  cancel-in-progress: true
+jobs:
+  synthetic-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Node synthetic UI tests only
+        run: node --test tests/trix-wix-app-bridge-004.test.mjs tests/trix-wix-app-bridge-005.test.mjs
