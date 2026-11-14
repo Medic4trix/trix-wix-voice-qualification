@@ -58,3 +58,12 @@ Test file blob: `0cf9ae2825df40ceaa6d3d88d8154b722121dbc6`
 
 ## Status
 **R1 implemented; adapted checks PASS; native Node.js 17/17 PASS; Chrome local loopback/manual-stop/background no-auto-resume observed; Etapa 2 OPEN / remaining physical edge cases and final scope review pending.**
+
+## R2 — Fail-closed AudioContext close handling (2026-11-14)
+- User explicitly authorized the narrowly scoped R2 correction to PR #9.
+- The HTML now requires both `AudioContext` closure and ended microphone tracks before setting `releaseReady=true`.
+- On `AudioContext.close()` rejection or non-closed postcondition, readiness stays false and the context reference is retained for a later close attempt; no automatic restart is introduced.
+- Source/analyser disconnect exceptions are logged independently to avoid suppressing the context close attempt.
+- Two new synthetic Node regression cases cover close rejection followed by retry, and an already-closed context. The existing pending-close test fixture now models transition to `state='closed'` on resolution.
+- **Native 19-test execution is pending.** Earlier 17/17 PASS applies to the previous R1 HEAD and is not a validation of R2.
+- Scope: no production, AWS, provider, PHI, merge, Wix publish, paid GitHub Actions, or Mobile Voice 003 changes.
