@@ -15,11 +15,20 @@ Test file blob: `0cf9ae2825df40ceaa6d3d88d8154b722121dbc6`
 - The concurrent-release test uses a deferred mocked `AudioContext.close()` to assert shared pending promise, one close, one track stop, blocked readiness during close, and readiness after close.
 - These results **are not** a native `node --test` execution, a real browser/WebRTC qualification, or an Android/device qualification.
 
+## Native Node.js execution evidence (user-provided Windows PowerShell transcript, 2026-11-14)
+- Node.js: `v22.23.5`; Git: `2.56.1.windows.1`.
+- Checkout of branch `trix-wix-voice-etapa2-qualification-001` with expected HEAD guard `832baf3a1e0f0640130af641455a878e9dcb99a4` passed.
+- Command: `node --test tests/trix-wix-voice-etapa2.test.mjs`.
+- Terminal summary: `tests 17`, `pass 17`, `fail 0`, `cancelled 0`, `skipped 0`, `todo 0`, `duration_ms 191.0625`.
+- Final script marker: `=== TRIX / QUALIFICACAO NATIVA PASS ===`.
+- Evidence is grounded in the PowerShell output provided in conversation; no standalone machine-signed log artifact was collected.
+- This establishes native automated test PASS, **not** physical browser/WebRTC or Android qualification.
+
 ## Remaining release gates
-1. Run `node --test tests/trix-wix-voice-etapa2.test.mjs` from a checkout of this PR branch and retain the complete output.
+1. Native Node.js suite: **PASS (17/17)**. Retain the user-provided transcript or attach a local log if required by governance.
 2. Perform separately authorized browser/device checks for microphone permissions, visibility transitions, WebRTC negotiation and teardown, and actual resource release.
 3. Review test scope and any remaining asynchronous edge cases before marking Etapa 2 complete.
 4. No merge, deployment, AWS, real providers, PHI, paid GitHub Actions, or start of Etapa 5 is authorized by this evidence.
 
 ## Status
-**R1 implemented; adapted regression checks PASS; Etapa 2 OPEN / native and physical qualification pending.**
+**R1 implemented; adapted checks PASS; native Node.js 17/17 PASS; Etapa 2 OPEN / physical qualification and final scope review pending.**
