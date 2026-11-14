@@ -50,14 +50,14 @@ Test file blob: `0cf9ae2825df40ceaa6d3d88d8154b722121dbc6`
 - The user-provided log did not show a late `MICROPHONE_GRANTED` or `LATE_MICROPHONE_RELEASED` for the accidental restart, so that branch is **code-reviewed, not physically observed**.
 - Outstanding distinct issue: `releaseResources()` catches `AudioContext.close()` exceptions but sets `releaseReady` based on track state only; an exceptional close cannot be declared fully qualified without additional assessment. No functional changes authorized or made.
 
-## Remaining release gates
+## Historical R1 release gates (superseded by R2 qualification below)
 1. Native Node.js suite: **PASS (17/17)**. Retain the user-provided transcript or attach a local log if required by governance.
 2. Chrome local loopback, manual-stop track release, background pause and no-auto-resume observed; still verify late asynchronous microphone acquisition, browser-level teardown, and exceptional AudioContext close behavior.
 3. Review test scope and any remaining asynchronous edge cases before marking Etapa 2 complete.
 4. No merge, deployment, AWS, real providers, PHI, paid GitHub Actions, or start of Etapa 5 is authorized by this evidence.
 
-## Status
-**R1 implemented; adapted checks PASS; native Node.js 17/17 PASS; Chrome local loopback/manual-stop/background no-auto-resume observed; Etapa 2 OPEN / remaining physical edge cases and final scope review pending.**
+## Historical R1 status (superseded)
+**R1 implemented; adapted checks PASS; native Node.js 17/17 PASS; Chrome local loopback/manual-stop/background no-auto-resume observed.** This is the historical R1 status, not the current R2 conclusion.
 
 ## R2 — Fail-closed AudioContext close handling (2026-11-14)
 - User explicitly authorized the narrowly scoped R2 correction to PR #9.
@@ -84,3 +84,17 @@ Test file blob: `0cf9ae2825df40ceaa6d3d88d8154b722121dbc6`
 - **PASS for R2 physical Chrome normal-path microphone/WebRTC/manual release.** This is user-provided log evidence, not independent browser instrumentation.
 - Exceptional `AudioContext.close()` rejection remains synthetically qualified only; no real-browser induced failure was performed. Previous R1 background/no-auto-resume evidence remains distinct.
 - No conclusion about app-internal navigation, Android behavior, external providers, or production readiness is implied.
+
+## Formal Etapa 2 R2 review (2026-11-14)
+**Decision: LOCAL R2 QUALIFICATION PASS; formal scope review complete. PR #9 remains Draft, with no merge or deployment authorization.**
+
+Reviewed directly against the branch versions of `v004-c9.html`, `tests/trix-wix-voice-etapa2.test.mjs`, and this evidence document:
+- Native R2 Node.js: **19/19 PASS**, per user-provided PowerShell transcript.
+- Physical Chrome R2 normal path: microphone granted, local WebRTC loopback/audio confirmed by user, acoustic window activity, manual stop, `audio:live -> audio:ended`, `releaseReady=true`.
+- Physical Chrome R1: background pause and foreground no-auto-resume observed. Not repeated on R2.
+- Synthetic checks: 120/180-second detector boundaries, stale generation handling, concurrent release, failed `AudioContext.close()` fail-closed behavior and retry.
+- Late microphone permission guard: source reviewed; the late-resolution branch was not physically observed.
+- Browser resource teardown is supported by app diagnostics and track state, **not** an independent browser-level resource audit. `PEERS_CLOSED` is application-reported.
+- Real browser `AudioContext.close()` exception, actual 120/180-second physical wait, app-internal navigation, Android Mobile Voice 003, external provider/economy and production are **not** qualified by this review.
+- No new functional changes are necessary to conclude **this local R2 qualification** based on current evidence. Broader integration/production gates remain separate.
+- **Governance:** no merge, publication, AWS, paid Actions, provider, PHI, production or Etapa 5 authorization is implied; PR #9 must remain Draft until separately authorized.
