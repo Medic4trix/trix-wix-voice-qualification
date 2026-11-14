@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Dr. TRIX — Qualificação visual sintética 005</title>
+<style>
+body{font:16px system-ui,sans-serif;max-width:650px;margin:4rem auto;padding:0 1rem;background:#f8fafc;color:#182235}
+main{background:white;padding:2rem;border-radius:14px;box-shadow:0 4px 22px #10203015}
+button,input{font:inherit;padding:.7rem;margin:.35rem 0}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.5}
+input{width:95%;box-sizing:border-box}output{display:block;min-height:3rem;white-space:pre-wrap;padding:1rem;background:#eef2f7}
+small{display:block;margin:1rem 0;color:#5a6475}
+</style>
+</head>
+<body><main id="synthetic-trix">
+<h1>Dr. TRIX — Ensaio de interface</h1>
+<strong>SIMULAÇÃO LOCAL — NÃO É O APLICATIVO CLÍNICO</strong>
+<small>Sem login, dados reais, backend, rede, áudio ou armazenamento. Não informe dados pessoais ou clínicos.</small>
+<p>Estado: <span data-status aria-live="polite">IDLE</span></p>
+<button data-start>Iniciar simulação</button>
+<button data-close>Encerrar</button>
+<label for="msg">Mensagem fictícia</label>
+<input id="msg" data-input placeholder="Ex.: Oi" autocomplete="off">
+<button data-send>Enviar mensagem simulada</button>
+<output data-output aria-live="polite"></output>
+</main>
+<script type="module">
+import {createSyntheticWixPresenter} from './trix-wix-app-bridge-005.mjs';
+import {createSyntheticDomView} from './trix-wix-app-bridge-005-dom.mjs';
+let counter=0;
+const ports={
+ syntheticOnly:true,
+ authenticate:async()=>({authority:'HUMAN_COGNITO_VERIFIED',subject_ref:'synthetic-subject'}),
+ readConsent:async()=>({schema_version:'native.conversation.consent.read.v1',current:{status:'ACCEPTED',active:true}}),
+ bootstrap:async()=>({session:{schema_version:'native.session.binding.v1',session_id:'synthetic-session',session_state:'ACTIVE'},conversation:{schema_version:'native.conversation.binding.v1',conversation_id:'synthetic-conversation',session_id:'synthetic-session',state:'ACTIVE'}}),
+ sendText:async payload=>({schema_version:'native.text.turn.response.v1',status:'processed',response_class:'NONCLINICAL',interaction_id:payload.interaction_id,text:'Resposta fictícia: interface sintética funcionando.'})
+};
+createSyntheticWixPresenter({
+ ports,view:createSyntheticDomView(document.querySelector('#synthetic-trix')),
+ ids:{next:()=>{const n=++counter;return {message_id:'synthetic-m-'+n,interaction_id:'synthetic-i-'+n,idempotency_key:'synthetic-k-'+n};}}
+});
+</script>
+</body></html>
