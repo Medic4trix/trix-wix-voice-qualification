@@ -43,3 +43,13 @@ Estado: **preparação técnica; NÃO integrado, NÃO publicado, NÃO aprovado p
 ## Decisão
 
 **GO** para revisão documental e testes sintéticos isolados. **NO-GO** para integração real, merge, publicação ou produção. Preservar PRs #3/#4 e versões históricas.
+
+## Revisão complementar de segurança — código Native
+
+- **CORS:** `apps/api/main.py` contém o middleware de contexto e os handlers de erro, mas não registra `CORSMiddleware` no trecho de inicialização inspecionado. Isso **não prova ausência de CORS na infraestrutura**; configuração de proxy/gateway e origem Wix ainda precisam de evidência.
+- **Autenticação:** `native_cognito_runtime_config.py` exige `TRIX_COGNITO_ISSUER` e `TRIX_COGNITO_CLIENT_ID` válidos. A autoridade de identidade humana continua no servidor; nenhuma configuração ou credencial foi acessada.
+- **Consentimento de escrita:** `native_conversation_consent_http.py` aceita somente `ACCEPT` ou `WITHDRAW`, com `expected_revision` inteiro não negativo; retirada com revisão zero é rejeitada. A configuração do aviso exige explicitamente `user_interface_enabled: False` no artefato atual. **Não ativar UI real de coleta de consentimento** sem revisão e autorização da governança correspondente.
+- **Idempotência:** `native_text_turn_contract.py` exige correspondência exata entre `Idempotency-Key` HTTP e `idempotency_key` do corpo, sete campos exatos e `message_id` diferente de `interaction_id`.
+- **Exposição clínica:** a entrega de conteúdo clínico continua fora do escopo do apresentador sintético; não ampliar classes de resposta permitidas.
+
+**Impedimento adicional:** o sinal `user_interface_enabled: False` impede considerar pronta uma UI operacional de consentimento. Este documento não altera a configuração nem propõe contorná-la.
