@@ -145,3 +145,49 @@ test('concurrent release calls share one pending close and cannot unlock restart
  assert.equal(sandbox.ready(),true);
  assert.equal(closeCount,1);
 });
+
+test('R2: AudioContext close rejection keeps restart blocked and allows retry', async()=>{
+ const releaseCode=script.slice(script.indexOf('let releaseInFlight=null;'),script.indexOf('async function connect('));
+ let closeCount=0,stopCount=0;
+ const logs=[];
+ const track={kind:'audio',readyState:'live',stop(){stopCount++;this.readyState='ended';}};
+ const audioCtx={state:'running',async close(){closeCount++;if(closeCount===1)throw Object.assign(new Error('synthetic'),{name:'SyntheticCloseError'});this.state='closed';}};
+ const context={
+  token:0,timer:null,releaseReady:true,stream:{getTracks:()=>[track]},
+  peerA:{close(){}},peerB:{close(){}},source:{disconnect(){}},analyser:{disconnect(){}},
+  ctx:audioCtx,buf:null,
+  $:id=>id==='audio'?{pause(){},srcObject:null}:{textContent:''},
+  log:(...args)=>logs.push(args),render(){},clearInterval(){}
+ };
+ const sandbox=vm.createContext(context);
+ vm.runInContext(releaseCode+'\nthis.runRelease=release;this.ready=()=>releaseReady;this.audioContext=()=>ctx;',sandbox);
+ await sandbox.runRelease('MANUAL_STOP');
+ assert.equal(sandbox.ready(),false);
+ assert.equal(sandbox.audioContext(),audioCtx);
+ assert.equal(stopCount,1);
+ assert.equal(closeCount,1);
+ assert.ok(logs.some(x=>x[0]==='AUDIO_CONTEXT_CLOSE_ERROR'));
+ assert.ok(logs.some(x=>x[0]==='LOCAL_RELEASE_OBSERVED'&&x[1].includes('ready=false')));
+ await sandbox.runRelease('RETRY_CLOSE');
+ assert.equal(sandbox.ready(),true);
+ assert.equal(sandbox.audioContext(),null);
+ assert.equal(closeCount,2);
+ assert.equal(stopCount,1);
+});
+
+test('R2: already closed AudioContext and ended track permit readiness',async()=>{
+ const releaseCode=script.slice(script.indexOf('let releaseInFlight=null;'),script.indexOf('async function connect('));
+ let closeCount=0;
+ const context={
+  token:0,timer:null,releaseReady:true,stream:{getTracks:()=>[{kind:'audio',readyState:'ended',stop(){}}]},
+  peerA:null,peerB:null,source:null,analyser:null,
+  ctx:{state:'closed',close(){closeCount++;}},buf:null,
+  $:id=>id==='audio'?{pause(){},srcObject:null}:{textContent:''},
+  log(){},render(){},clearInterval(){}
+ };
+ const sandbox=vm.createContext(context);
+ vm.runInContext(releaseCode+'\nthis.runRelease=release;this.ready=()=>releaseReady;',sandbox);
+ await sandbox.runRelease('MANUAL_STOP');
+ assert.equal(sandbox.ready(),true);
+ assert.equal(closeCount,0);
+});
