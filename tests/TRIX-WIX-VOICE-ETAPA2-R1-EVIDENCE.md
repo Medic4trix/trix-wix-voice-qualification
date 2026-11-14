@@ -75,3 +75,12 @@ Test file blob: `0cf9ae2825df40ceaa6d3d88d8154b722121dbc6`
 - Both R2-specific tests PASS: close rejection keeps restart blocked and permits retry; already-closed AudioContext does not require another close.
 - Evidence source: user-provided terminal transcript; no signed local log attached.
 - Remaining: physical Chrome retest on updated R2 HTML and final review of residual resource-lifecycle risk. R1 physical results predate R2 and do not alone validate the new HTML.
+
+## R2 physical Chrome normal-path qualification (user-provided diagnostic, 2026-11-14)
+- User reopened the local `v004-c9.html` after updating the checkout to R2 and confirmed microphone input and audible output worked well.
+- `MICROPHONE_GRANTED tracks=1` at 21:05:44.058Z; `REMOTE_TRACK_RECEIVED audio` at 21:05:44.153Z; `LOCAL_NEGOTIATION_COMPLETE ice_servers=0` at 21:05:44.177Z.
+- `WINDOW_ACTIVITY count=1 rms=0.03405` observed.
+- Manual stop: `C3_LIFECYCLE STOP ACTIVE -> ENDED` at 21:05:50.520Z; `TRACK_RELEASE before=audio:live after=audio:ended`; `PEERS_CLOSED local=true`; `LOCAL_RELEASE_OBSERVED ready=true ... reason=MANUAL_STOP` at 21:05:50.525Z.
+- **PASS for R2 physical Chrome normal-path microphone/WebRTC/manual release.** This is user-provided log evidence, not independent browser instrumentation.
+- Exceptional `AudioContext.close()` rejection remains synthetically qualified only; no real-browser induced failure was performed. Previous R1 background/no-auto-resume evidence remains distinct.
+- No conclusion about app-internal navigation, Android behavior, external providers, or production readiness is implied.
