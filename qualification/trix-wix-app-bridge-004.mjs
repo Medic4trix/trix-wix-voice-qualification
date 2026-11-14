@@ -35,7 +35,7 @@ export function createSyntheticBridge(ports) {
       }
       const session = await ports.bootstrap(identity);
       if (generation !== epoch) return snapshot();
-      if (!session || !nonempty(session.conversation_id) || !nonempty(session.session_ref))
+      if (!session || session.session?.schema_version !== 'native.session.binding.v1' || session.conversation?.schema_version !== 'native.conversation.binding.v1' || !nonempty(session.session.session_id) || !nonempty(session.conversation.conversation_id) || session.conversation.session_id !== session.session.session_id || session.session.session_state !== 'ACTIVE' || session.conversation.state !== 'ACTIVE')
         fail('SERVER_SESSION_REQUIRED');
       context = {identity, session}; state = STATES.READY; return snapshot();
     } catch (e) {
@@ -43,9 +43,9 @@ export function createSyntheticBridge(ports) {
       return snapshot();
     }
   }
-  async function send(text, interaction_id, idempotency_key) {
+  async function send(text, message_id, interaction_id, idempotency_key) {
     if (state !== STATES.READY || !context) fail('SESSION_NOT_READY');
-    if (![text, interaction_id, idempotency_key].every(nonempty)) fail('INVALID_TEXT_TURN');
+    if (![text, message_id, interaction_id, idempotency_key].every(nonempty) || message_id === interaction_id) fail('INVALID_TEXT_TURN');
     const generation = epoch, current = context;
     state = STATES.SENDING;
     try {
@@ -56,7 +56,8 @@ export function createSyntheticBridge(ports) {
         context = null; state = STATES.CONSENT_REQUIRED; return snapshot();
       }
       const response = await ports.sendText({
-        conversation_id: current.session.conversation_id, text,
+        schema_version: 'native.text.turn.v1', conversation_id: current.session.conversation.conversation_id,
+        session_id: current.session.session.session_id, message_id, text,
         interaction_id, idempotency_key
       }, current.identity, current.session);
       if (generation !== epoch) return snapshot();
@@ -65,7 +66,7 @@ export function createSyntheticBridge(ports) {
           nonempty(response.text) && response.interaction_id === interaction_id) {
         last = {kind: 'NONCLINICAL', text: response.text};
       } else if (response?.schema_version === 'native.text.turn.accepted.v1' &&
-                 ['accepted', 'replayed'].includes(response.status)) {
+                 ['processed', 'replayed'].includes(response.status) && response.interaction_id === interaction_id) {
         last = {kind: 'RECEIPT', text: null};
       } else {
         fail('RESPONSE_NOT_AUTHORIZED_FOR_DISPLAY');
