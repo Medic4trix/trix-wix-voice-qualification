@@ -52,7 +52,13 @@ function apply(type,extra={}){
  if(old.state!==state.state)log('C3_LIFECYCLE',type+' '+old.state+' -> '+state.state+' elapsed='+Math.floor(state.at-state.lastActivityAt)+'s');
  render();return old.state!==state.state;
 }
-async function release(reason){
+let releaseInFlight=null;
+function release(reason){
+ if(releaseInFlight)return releaseInFlight;
+ releaseInFlight=releaseResources(reason).finally(()=>{releaseInFlight=null;});
+ return releaseInFlight;
+}
+async function releaseResources(reason){
  token++;if(timer){clearInterval(timer);timer=null;}
  releaseReady=false;
  const tracks=stream?.getTracks()||[],before=tracks.map(t=>t.kind+':'+t.readyState).join(',')||'none';
@@ -61,9 +67,12 @@ async function release(reason){
  for(const p of [peerA,peerB]){try{p?.close();}catch(e){log('PEER_CLOSE_ERROR',e.name);}}
  peerA=null;peerB=null;stream=null;
  $('audio').pause();$('audio').srcObject=null;
- try{source?.disconnect();analyser?.disconnect();if(ctx&&ctx.state!=='closed')await ctx.close();}catch(e){log('AUDIO_CONTEXT_CLOSE_ERROR',e.name);}
- source=null;analyser=null;ctx=null;buf=null;
- releaseReady=tracks.every(t=>t.readyState==='ended');
+ let audioClosed=!ctx||ctx.state==='closed';
+ try{source?.disconnect();}catch(e){log('AUDIO_SOURCE_DISCONNECT_ERROR',e.name);}
+ try{analyser?.disconnect();}catch(e){log('AUDIO_ANALYSER_DISCONNECT_ERROR',e.name);}
+ try{if(ctx&&ctx.state!=='closed')await ctx.close();audioClosed=!ctx||ctx.state==='closed';}catch(e){audioClosed=false;log('AUDIO_CONTEXT_CLOSE_ERROR',e.name);}
+ if(audioClosed){source=null;analyser=null;ctx=null;buf=null;}
+ releaseReady=audioClosed&&tracks.every(t=>t.readyState==='ended');
  log('TRACK_RELEASE','before='+before+' after='+after);
  log('PEERS_CLOSED','local=true');
  log('LOCAL_RELEASE_OBSERVED','ready='+releaseReady+' remote_economic_confirmation=NOT_AVAILABLE reason='+reason);
