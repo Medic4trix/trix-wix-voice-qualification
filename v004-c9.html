@@ -52,7 +52,13 @@ function apply(type,extra={}){
  if(old.state!==state.state)log('C3_LIFECYCLE',type+' '+old.state+' -> '+state.state+' elapsed='+Math.floor(state.at-state.lastActivityAt)+'s');
  render();return old.state!==state.state;
 }
-async function release(reason){
+let releaseInFlight=null;
+function release(reason){
+ if(releaseInFlight)return releaseInFlight;
+ releaseInFlight=releaseResources(reason).finally(()=>{releaseInFlight=null;});
+ return releaseInFlight;
+}
+async function releaseResources(reason){
  token++;if(timer){clearInterval(timer);timer=null;}
  releaseReady=false;
  const tracks=stream?.getTracks()||[],before=tracks.map(t=>t.kind+':'+t.readyState).join(',')||'none';
