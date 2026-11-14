@@ -126,7 +126,7 @@ test('concurrent release calls share one pending close and cannot unlock restart
   token:0,timer:null,releaseReady:true,stream:{getTracks:()=>[track]},
   peerA:{close(){}},peerB:{close(){}},
   source:{disconnect(){}},analyser:{disconnect(){}},
-  ctx:{state:'running',close(){closeCount++;return closePending;}},
+  ctx:{state:'running',close(){closeCount++;return closePending.then(()=>{this.state='closed';});}},
   buf:null,
   $:id=>id==='audio'?{pause(){},srcObject:null}:{textContent:''},
   log(){},render(){},clearInterval(){},
