@@ -1,0 +1,23 @@
+name: TRIX Wix synthetic integration fix
+on:
+  pull_request:
+    paths:
+      - 'qualification/trix-wix-synthetic-integration-fix-001.mjs'
+      - 'tests/trix-wix-synthetic-integration-fix-001.test.mjs'
+      - '.github/workflows/trix-wix-synthetic-integration-fix-001.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: synthetic-integration-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  synthetic-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/trix-wix-synthetic-integration-fix-001.test.mjs
