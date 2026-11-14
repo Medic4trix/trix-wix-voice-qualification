@@ -19,7 +19,9 @@ Estado: **preparação técnica; NÃO integrado, NÃO publicado, NÃO aprovado p
 | Resposta | `execute_native_text_turn_http` | `native.text.turn.response.v1` ou `native.text.turn.accepted.v1` | Exibir apenas `NONCLINICAL` autorizado; recibo não é resposta; conteúdo clínico requer liberação distinta |
 | Falhas | `ApiError` nos handlers Native | 401, 403, 404, 409, 422, 503 conforme caso | Não exibir detalhes internos; recuperar sessão somente mediante nova autoridade |
 
-**Importante:** nomes exatos das rotas HTTP públicas, configuração CORS, transporte do bearer no ambiente Wix, proteção CSRF e implantação não foram qualificados por esta análise. Não inferir endpoints nem acrescentar URLs presumidas.
+**Rotas confirmadas no código FastAPI** (`Medic4trix/trix-v1/apps/api/main.py`, `main`, linhas 215–270): `POST /v1/native/bootstrap` (Authorization); `GET /v1/native/conversation-consent` (Authorization); `POST /v1/native/conversation-consent` (Authorization; payload `action`, `expected_revision`); `POST /v1/native/text-turns` (Authorization + Idempotency-Key). São caminhos declarados no código, **não** prova de exposição pública, implantação ou acesso Wix.
+
+**Ainda não qualificados:** URL base publicada, configuração CORS, transporte do bearer no ambiente Wix, proteção CSRF e implantação. Não inferir host, credenciais ou disponibilidade operacional.
 
 ## Diferença entre demonstração e operação
 
@@ -30,7 +32,7 @@ Estado: **preparação técnica; NÃO integrado, NÃO publicado, NÃO aprovado p
 
 ## Critérios de aceitação para futura autorização operacional
 
-1. Validar endpoints e métodos HTTP diretamente no roteador real; não presumir caminhos.
+1. Rotas e métodos identificados em `apps/api/main.py`; antes do uso real, verificar a versão efetivamente implantada e a exposição pública.
 2. Confirmar contexto de origem, CSP, CORS, proteção de tokens e política de armazenamento para Wix publicado.
 3. Testar identidade humana real somente em ambiente autorizado e sem dados clínicos reais; proibir token Wix como autoridade humana.
 4. Qualificar leitura/revogação de consentimento, bootstrap canônico, idempotência HTTP e resposta `NONCLINICAL`.
