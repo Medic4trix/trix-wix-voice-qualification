@@ -5,8 +5,11 @@ on:
       - qualification/trix-wix-app-bridge-005
     paths:
       - 'qualification/trix-wix-app-bridge-005.mjs'
+      - 'qualification/trix-wix-app-bridge-005-dom.mjs'
+      - 'qualification/trix-wix-app-bridge-005-demo.html'
       - 'qualification/trix-wix-app-bridge-004.mjs'
       - 'tests/trix-wix-app-bridge-005.test.mjs'
+      - 'tests/trix-wix-app-bridge-005-dom.test.mjs'
       - '.github/workflows/trix-wix-app-bridge-005.yml'
   workflow_dispatch:
 permissions:
@@ -21,4 +24,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Node synthetic UI tests only
-        run: node --test tests/trix-wix-app-bridge-004.test.mjs tests/trix-wix-app-bridge-005.test.mjs
+        run: node --test tests/trix-wix-app-bridge-004.test.mjs tests/trix-wix-app-bridge-005.test.mjs tests/trix-wix-app-bridge-005-dom.test.mjs
