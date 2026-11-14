@@ -65,5 +65,13 @@ Test file blob: `0cf9ae2825df40ceaa6d3d88d8154b722121dbc6`
 - On `AudioContext.close()` rejection or non-closed postcondition, readiness stays false and the context reference is retained for a later close attempt; no automatic restart is introduced.
 - Source/analyser disconnect exceptions are logged independently to avoid suppressing the context close attempt.
 - Two new synthetic Node regression cases cover close rejection followed by retry, and an already-closed context. The existing pending-close test fixture now models transition to `state='closed'` on resolution.
-- **Native 19-test execution is pending.** Earlier 17/17 PASS applies to the previous R1 HEAD and is not a validation of R2.
+- **Native 19-test execution PASS (19/19, 0 FAIL), per user-provided Windows terminal output.** Earlier 17/17 PASS remains historical R1 evidence.
 - Scope: no production, AWS, provider, PHI, merge, Wix publish, paid GitHub Actions, or Mobile Voice 003 changes.
+
+## R2 native Node.js qualification (user-provided Windows PowerShell output, 2026-11-14)
+- Local branch fast-forwarded from `832baf3` to expected R2 HEAD `60349a8e428223717872bdba88da8426ff78a0b9`; exactly the three scoped files updated.
+- Command: `D:\\TRIX-NODE-PORTATIL\\node-v22.23.5-win-x64\\node.exe --test tests/trix-wix-voice-etapa2.test.mjs`.
+- Output: `tests 19`, `pass 19`, `fail 0`, `cancelled 0`, `skipped 0`, `todo 0`, `duration_ms 1129.2545`; final marker `=== TRIX / R2 / TESTES PASS ===`.
+- Both R2-specific tests PASS: close rejection keeps restart blocked and permits retry; already-closed AudioContext does not require another close.
+- Evidence source: user-provided terminal transcript; no signed local log attached.
+- Remaining: physical Chrome retest on updated R2 HTML and final review of residual resource-lifecycle risk. R1 physical results predate R2 and do not alone validate the new HTML.
