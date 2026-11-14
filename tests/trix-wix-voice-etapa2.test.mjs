@@ -114,3 +114,34 @@ test('source invalidates old asynchronous operations using token',()=>{
 test('source blocks restart while releaseReady is false',()=>{
  assert.match(script,/!releaseReady\|\|!\$\('admit'\)\.checked/);
 });
+
+test('concurrent release calls share one pending close and cannot unlock restart early', async()=>{
+ const releaseCode=script.slice(script.indexOf('let releaseInFlight=null;'),script.indexOf('async function connect('));
+ assert.ok(releaseCode.includes('function release(reason)'));
+ let resolveClose;
+ const closePending=new Promise(resolve=>{resolveClose=resolve;});
+ let closeCount=0,stopCount=0;
+ const track={kind:'audio',readyState:'live',stop(){stopCount++;this.readyState='ended';}};
+ const context={
+  token:0,timer:null,releaseReady:true,stream:{getTracks:()=>[track]},
+  peerA:{close(){}},peerB:{close(){}},
+  source:{disconnect(){}},analyser:{disconnect(){}},
+  ctx:{state:'running',close(){closeCount++;return closePending;}},
+  buf:null,
+  $:id=>id==='audio'?{pause(){},srcObject:null}:{textContent:''},
+  log(){},render(){},clearInterval(){},
+ };
+ const sandbox=vm.createContext(context);
+ vm.runInContext(releaseCode+'\nthis.runRelease=release;this.ready=()=>releaseReady;this.currentToken=()=>token;',sandbox);
+ const first=sandbox.runRelease('MANUAL_STOP');
+ const second=sandbox.runRelease('BACKGROUND_HIDDEN');
+ assert.equal(first,second);
+ assert.equal(sandbox.ready(),false);
+ assert.equal(sandbox.currentToken(),1);
+ assert.equal(closeCount,1);
+ assert.equal(stopCount,1);
+ resolveClose();
+ await Promise.all([first,second]);
+ assert.equal(sandbox.ready(),true);
+ assert.equal(closeCount,1);
+});
